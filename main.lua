@@ -9,6 +9,7 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local TextChatService = game:GetService("TextChatService")
 
+-- GUI 생성 시작
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "SpotifyMusicBot"
 screenGui.ResetOnSpawn = false
@@ -18,14 +19,10 @@ local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
 mainFrame.Size = UDim2.new(0, 500, 0, 350)
 mainFrame.Position = UDim2.new(0.5, -250, 0.5, -175)
-mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+mainFrame.BackgroundColor3 = Color3.fromRGB(26, 26, 26)
 mainFrame.BorderSizePixel = 0
 mainFrame.Parent = screenGui
 
-mainFrame.Size = UDim2.new(0, 500, 0, 350)
-mainFrame.Position = UDim2.new(0.5, -250, 0.5, -175)
-mainFrame.BackgroundColor3 = Color3.fromRGB(26, 26, 26)
-mainFrame.BorderSizePixel = 0
 local mainCorner = Instance.new("UICorner", mainFrame)
 mainCorner.CornerRadius = UDim.new(0, 12)
 local mainStroke = Instance.new("UIStroke", mainFrame)
@@ -79,7 +76,7 @@ inputBox.Position = UDim2.new(0, 10, 0, 87)
 inputBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 inputBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 inputBox.Text = ""
-inputBox.PlaceholderText = "https://open.spotify.com/track/..."
+inputBox.PlaceholderText = "http://open.spotify.com/track/..."
 inputBox.TextSize = 12
 inputBox.Font = Enum.Font.Gotham
 inputBox.BorderSizePixel = 1
@@ -208,6 +205,7 @@ local playbackThread = nil
 
 local PLACEHOLDER_IMAGE = "rbxassetid://7072716801"
 
+-- 유틸리티 함수
 local function setRemoteImage(imgLabel, url)
 	if not url or url == "" then
 		pcall(function() imgLabel.Image = PLACEHOLDER_IMAGE end)
@@ -225,8 +223,13 @@ local function setRemoteImage(imgLabel, url)
 	end
 end
 
+local function setStatus(text, color)
+	statusLabel.Text = text
+	statusLabel.TextColor3 = color or Color3.fromRGB(100, 200, 100)
+end
+
 local WHITELIST = {
-	"lolwhenme"
+	"lolwhenme" -- 화이트리스트 유저 이름
 }
 
 local function isPlayerWhitelisted(playerName)
@@ -238,6 +241,7 @@ local function isPlayerWhitelisted(playerName)
 	return false
 end
 
+-- 드래그 로직
 local dragging = false
 local dragStart = nil
 local frameStart = nil
@@ -264,6 +268,7 @@ UserInputService.InputChanged:Connect(function(input, gameProcessed)
 	end
 end)
 
+-- 큐(Queue) GUI
 local queueFrame = Instance.new("Frame")
 queueFrame.Name = "QueueFrame"
 queueFrame.Size = UDim2.new(0, 320, 0, 260)
@@ -309,7 +314,7 @@ queueButton.Font = Enum.Font.GothamBold
 queueButton.BorderSizePixel = 0
 queueButton.Parent = mainFrame
 
--- Credits Button
+-- Credits Button & Modal
 local creditsButton = Instance.new("TextButton")
 creditsButton.Name = "CreditsButton"
 creditsButton.Size = UDim2.new(0, 32, 0, 32)
@@ -324,7 +329,6 @@ creditsButton.Parent = header
 local creditsCorner = Instance.new("UICorner", creditsButton)
 creditsCorner.CornerRadius = UDim.new(0, 6)
 
--- Credits Modal
 local creditsModal = Instance.new("Frame")
 creditsModal.Name = "CreditsModal"
 creditsModal.Size = UDim2.new(0, 320, 0, 220)
@@ -376,7 +380,7 @@ closeBtn.MouseButton1Click:Connect(function()
     creditsModal.Visible = false
 end)
 
-
+-- Queue 관련 함수
 local function addToQueue(songData)
 	table.insert(songQueue, songData)
 	updateQueueUI()
@@ -471,6 +475,63 @@ local function isPythonServerRunning()
 	return false
 end
 
+-- 채팅 관련 안전 발송 함수
+local CHAT_RATE_LIMIT_SECONDS = 5
+local lastChatSentAt = 0
+local function safeSendChat(message)
+	local now = tick()
+	if now - lastChatSentAt < CHAT_RATE_LIMIT_SECONDS then
+		return
+	end
+	lastChatSentAt = now
+
+	pcall(function()
+		local channel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+		if channel then
+			channel:SendAsync(message)
+		end
+	end)
+end
+
+local function playNextInQueue()
+	if #songQueue > 0 then
+		local nextSong = table.remove(songQueue, 1)
+		updateQueueUI()
+		currentSongData = nextSong
+		songTitle.Text = nextSong.title
+		songArtist.Text = nextSong.artist
+		setStatus("🎵 재생 중: " .. nextSong.title, Color3.fromRGB(100, 200, 100))
+
+		local success = pcall(function()
+			game:HttpGet(PYTHON_SERVER .. "/play?path=" .. nextSong.path)
+		end)
+
+		if success then
+			isPlaying = true
+			isPaused = false
+			playButton.Visible = false
+			pauseButton.Visible = true
+			stopButton.Visible = true
+			startPlaybackMonitor()
+		else
+			setStatus("✗ 노래 재생 실패", Color3.fromRGB(200, 100, 100))
+			isPlaying = false
+			playButton.Text = "▶ Play"
+			playButton.Visible = true
+			pauseButton.Visible = false
+			stopButton.Visible = false
+		end
+	else
+		isPlaying = false
+		isPaused = false
+		playButton.Text = "▶ Play"
+		playButton.Visible = true
+		pauseButton.Visible = false
+		stopButton.Visible = false
+		setStatus("✓ 대기열 끝", Color3.fromRGB(100, 200, 100))
+	end
+end
+
 local function startPlaybackMonitor()
 	if playbackMonitor then return end
 	playbackMonitor = task.spawn(function()
@@ -508,7 +569,7 @@ local function startPlaybackMonitor()
 				if #songQueue > 0 then
 					playNextInQueue()
 				else
-					setStatus("✓ Queue finished", Color3.fromRGB(100, 200, 100))
+					setStatus("✓ 대기열 끝", Color3.fromRGB(100, 200, 100))
 				end
 				break
 			end
@@ -519,52 +580,8 @@ local function startPlaybackMonitor()
 	end)
 end
 
-local function playNextInQueue()
-	if #songQueue > 0 then
-		local nextSong = table.remove(songQueue, 1)
-		updateQueueUI()
-		currentSongData = nextSong
-		songTitle.Text = nextSong.title
-		songArtist.Text = nextSong.artist
-		setStatus("🎵 Playing: " .. nextSong.title, Color3.fromRGB(100, 200, 100))
-
-		local success = pcall(function()
-			game:HttpGet(PYTHON_SERVER .. "/play?path=" .. nextSong.path)
-		end)
-
-		if success then
-			isPlaying = true
-			isPaused = false
-			playButton.Visible = false
-			pauseButton.Visible = true
-			stopButton.Visible = true
-			startPlaybackMonitor()
-		else
-			setStatus("✗ Failed to play song", Color3.fromRGB(200, 100, 100))
-			isPlaying = false
-			playButton.Text = "▶ Play"
-			playButton.Visible = true
-			pauseButton.Visible = false
-			stopButton.Visible = false
-		end
-	else
-		isPlaying = false
-		isPaused = false
-		playButton.Text = "▶ Play"
-		playButton.Visible = true
-		pauseButton.Visible = false
-		stopButton.Visible = false
-		setStatus("✓ Queue finished", Color3.fromRGB(100, 200, 100))
-	end
-end
-
-local function setStatus(text, color)
-	statusLabel.Text = text
-	statusLabel.TextColor3 = color or Color3.fromRGB(100, 200, 100)
-end
-
 local function callPythonBackend(link)
-	setStatus("⏳ Fetching song data...", Color3.fromRGB(200, 200, 100))
+	setStatus("⏳ 노래 정보 불러오는 중...", Color3.fromRGB(200, 200, 100))
 	
 	local success, result = pcall(function()
 		local response = game:HttpGet(PYTHON_SERVER .. "/fetch?link=" .. link)
@@ -584,34 +601,34 @@ local function callPythonBackend(link)
 			
 			if isPlaying then
 				addToQueue(songData)
-				setStatus("✓ Song added to queue", Color3.fromRGB(100, 200, 100))
+				setStatus("✓ 대기열에 추가됨", Color3.fromRGB(100, 200, 100))
 			else
 				currentSongData = songData
 				playButton.Visible = true
 				pauseButton.Visible = false
 				stopButton.Visible = false
-				setStatus("✓ Song loaded (ready to play)", Color3.fromRGB(100, 200, 100))
+				setStatus("✓ 노래 로드됨 (재생 준비 완료)", Color3.fromRGB(100, 200, 100))
 			end
 			
 			return true
 		else
-			setStatus("✗ " .. (songData.error or "Failed to load song"), Color3.fromRGB(200, 100, 100))
+			setStatus("✗ " .. (songData.error or "로드 실패"), Color3.fromRGB(200, 100, 100))
 			return false
 		end
 	else
-		setStatus("✗ Python server not responding", Color3.fromRGB(200, 100, 100))
+		setStatus("✗ Python 서버 응답 없음", Color3.fromRGB(200, 100, 100))
 		return false
 	end
 end
 
 local function playSong()
 	if not currentSongData then
-		setStatus("✗ No song loaded", Color3.fromRGB(200, 100, 100))
+		setStatus("✗ 로드된 노래가 없습니다", Color3.fromRGB(200, 100, 100))
 		return
 	end
 
 	if not isPythonServerRunning() then
-		setStatus("Python script is not open!", Color3.fromRGB(200, 100, 100))
+		setStatus("Python 스크립트가 켜져있지 않습니다!", Color3.fromRGB(200, 100, 100))
 		return
 	end
 
@@ -621,14 +638,14 @@ local function playSong()
 		playButton.Visible = false
 		pauseButton.Visible = true
 		stopButton.Visible = true
-		setStatus("🎵 Resumed: " .. currentSongData.title, Color3.fromRGB(100, 200, 100))
+		setStatus("🎵 재생 재개: " .. currentSongData.title, Color3.fromRGB(100, 200, 100))
 
 		local success = pcall(function()
 			game:HttpGet(PYTHON_SERVER .. "/resume")
 		end)
 
 		if not success then
-			setStatus("✗ Failed to resume", Color3.fromRGB(200, 100, 100))
+			setStatus("✗ 재개 실패", Color3.fromRGB(200, 100, 100))
 			isPaused = true
 			playButton.Visible = true
 			pauseButton.Visible = false
@@ -643,14 +660,14 @@ local function playSong()
 	playButton.Visible = false
 	pauseButton.Visible = true
 	stopButton.Visible = true
-	setStatus("🎵 Playing: " .. currentSongData.title, Color3.fromRGB(100, 200, 100))
+	setStatus("🎵 재생 중: " .. currentSongData.title, Color3.fromRGB(100, 200, 100))
 
 	local success = pcall(function()
 		game:HttpGet(PYTHON_SERVER .. "/play?path=" .. currentSongData.path)
 	end)
 
 	if not success then
-		setStatus("✗ Failed to play song", Color3.fromRGB(200, 100, 100))
+		setStatus("✗ 재생 실패", Color3.fromRGB(200, 100, 100))
 		isPlaying = false
 		isPaused = false
 		playButton.Visible = true
@@ -672,14 +689,14 @@ local function pauseSong()
 	playButton.Text = "▶ Resume"
 	pauseButton.Visible = false
 	stopButton.Visible = true
-	setStatus("⏸ Paused: " .. (currentSongData and currentSongData.title or ""), Color3.fromRGB(200, 200, 100))
+	setStatus("⏸ 일시정지: " .. (currentSongData and currentSongData.title or ""), Color3.fromRGB(200, 200, 100))
 	
 	local success = pcall(function()
 		game:HttpGet(PYTHON_SERVER .. "/pause")
 	end)
 	
 	if not success then
-		setStatus("✗ Failed to pause", Color3.fromRGB(200, 100, 100))
+		setStatus("✗ 일시정지 실패", Color3.fromRGB(200, 100, 100))
 		isPaused = false
 		playButton.Visible = false
 		pauseButton.Visible = true
@@ -703,45 +720,46 @@ local function stopSong()
 	songArtist.Text = "Artist unknown"
 	setRemoteImage(songImage, nil)
 
-	setStatus("✓ Stopped", Color3.fromRGB(100, 200, 100))
+	setStatus("✓ 정지됨", Color3.fromRGB(100, 200, 100))
 end
 
+-- 한글화된 스킵 함수
 local function skipSong()
 	pcall(function()
 		game:HttpGet(PYTHON_SERVER .. "/stop")
 	end)
 
-	-- small delay to ensure backend stops before starting next
 	task.wait(0.2)
 
 	if #songQueue > 0 then
-		setStatus("⏭ Skipping to next song...", Color3.fromRGB(100, 200, 100))
+		setStatus("⏭ 다음 곡으로 넘어갑니다...", Color3.fromRGB(100, 200, 100))
 		playNextInQueue()
 		pcall(function()
-			safeSendChat("⏭ Skipped to next song.")
+			safeSendChat("⏭ 다음 곡으로 스킵했습니다.")
 		end)
 	else
 		stopSong()
 		pcall(function()
-			safeSendChat("⏭ Skipped: no more songs, stopped playback.")
+			safeSendChat("⏭ 대기열이 비어있어 재생을 정지합니다.")
 		end)
 	end
 end
 
+-- 한글화된 검색 및 재생 함수
 local function searchAndPlaySong(songName)
 	if not isPythonServerRunning() then
-		setStatus("Python script is not open!", Color3.fromRGB(200, 100, 100))
+		setStatus("Python 스크립트가 켜져있지 않습니다!", Color3.fromRGB(200, 100, 100))
 		return
 	end
 	
-	setStatus("Finding " .. songName .. "... Please wait.", Color3.fromRGB(200, 200, 100))
+	setStatus("🔍 '" .. songName .. "' 검색 중... 잠시만 기다려주세요.", Color3.fromRGB(200, 200, 100))
 	
 	local success, result = pcall(function()
 		return game:HttpGet(PYTHON_SERVER .. "/search?query=" .. game:GetService("HttpService"):UrlEncode(songName))
 	end)
 	
 	if not success or not result then
-		setStatus("✗ Failed to search for song", Color3.fromRGB(200, 100, 100))
+		setStatus("✗ 노래 검색 실패", Color3.fromRGB(200, 100, 100))
 		return
 	end
 	
@@ -751,35 +769,36 @@ local function searchAndPlaySong(songName)
 	end)
 	
 	if not decodeOk or not searchData or searchData.error then
-		setStatus("✗ Song not found", Color3.fromRGB(200, 100, 100))
+		setStatus("✗ 노래를 찾을 수 없습니다", Color3.fromRGB(200, 100, 100))
 		pcall(function()
-			safeSendChat("Song not found!")
+			safeSendChat("❌ 노래를 찾을 수 없습니다!")
 		end)
 		return
 	end
 	
 	currentSongData = searchData
-	songTitle.Text = searchData.title or "Unknown Title"
-	songArtist.Text = searchData.artist or "Unknown Artist"
+	songTitle.Text = searchData.title or "제목 없음"
+	songArtist.Text = searchData.artist or "아티스트 불명"
 	
 	if searchData.image then
 		setRemoteImage(songImage, searchData.image)
 	end
 	
 	playButton.Visible = true
-	setStatus("Successfully found the song! Playing now...", Color3.fromRGB(100, 200, 100))
+	setStatus("노래를 찾았습니다! 곧 재생됩니다...", Color3.fromRGB(100, 200, 100))
 	pcall(function()
-		safeSendChat("Successfully found the song! Playing now...")
+		safeSendChat("✅ 노래를 찾았습니다! 재생을 시작합니다...")
 	end)
 	
 	task.wait(0.5)
 	playSong()
 end
 
+-- 버튼 이벤트 연결
 loadButton.MouseButton1Click:Connect(function()
 	local link = inputBox.Text
 	if link == "" then
-		setStatus("✗ Enter a Spotify link", Color3.fromRGB(200, 100, 100))
+		setStatus("✗ Spotify 링크를 입력하세요", Color3.fromRGB(200, 100, 100))
 		return
 	end
 	callPythonBackend(link)
@@ -787,7 +806,7 @@ end)
 
 playButton.MouseButton1Click:Connect(function()
 	if not isPythonServerRunning() then
-		setStatus("Python script is not open!", Color3.fromRGB(200, 100, 100))
+		setStatus("Python 스크립트가 켜져있지 않습니다!", Color3.fromRGB(200, 100, 100))
 		return
 	end
 	playSong()
@@ -795,7 +814,7 @@ end)
 
 pauseButton.MouseButton1Click:Connect(function()
 	if not isPythonServerRunning() then
-		setStatus("Python script is not open!", Color3.fromRGB(200, 100, 100))
+		setStatus("Python 스크립트가 켜져있지 않습니다!", Color3.fromRGB(200, 100, 100))
 		return
 	end
 	pauseSong()
@@ -803,102 +822,78 @@ end)
 
 stopButton.MouseButton1Click:Connect(function()
 	if not isPythonServerRunning() then
-		setStatus("Python script is not open!", Color3.fromRGB(200, 100, 100))
+		setStatus("Python 스크립트가 켜져있지 않습니다!", Color3.fromRGB(200, 100, 100))
 		return
 	end
 	stopSong()
 end)
 
-local CHAT_RATE_LIMIT_SECONDS = 5
-local lastChatSentAt = 0
-local function safeSendChat(message)
-	local now = tick()
-	if now - lastChatSentAt < CHAT_RATE_LIMIT_SECONDS then
-		return
-	end
-	lastChatSentAt = now
-
-	pcall(function()
-		local channel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
-		if channel then
-			channel:SendAsync(message)
-		end
-	end)
-end
-
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local function chatMessage(str)
-	str = tostring(str)
-	if TextChatService and TextChatService.TextChannels and TextChatService.TextChannels:FindFirstChild("RBXGeneral") then
-		pcall(function() TextChatService.TextChannels.RBXGeneral:SendAsync(str) end)
-	else
-		pcall(function()
-			if ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents") and ReplicatedStorage.DefaultChatSystemChatEvents:FindFirstChild("SayMessageRequest") then
-				ReplicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(str, "All")
-			end
-		end)
-	end
-end
-
+-- 한글 명령어 처리 함수
 local function handleChatCommand(speakerName, message)
 	message = message or ""
 	message = message:match("^%s*(.-)%s*$") or ""
-	local lower = message:lower()
-
+	
 	local function notWhitelisted()
-		setStatus("✗ You are not whitelisted for this command!", Color3.fromRGB(200, 100, 100))
-		pcall(function() safeSendChat("You are not whitelisted!") end)
+		setStatus("✗ 이 명령어를 사용할 권한이 없습니다!", Color3.fromRGB(200, 100, 100))
+		pcall(function() safeSendChat("⛔ 권한이 없습니다!") end)
 	end
 
-	if lower:sub(1,6) == "!play " or lower == "!play" then
+	if message:match("^!재생") then
 		if not isPlayerWhitelisted(speakerName) then
 			notWhitelisted()
 			return
 		end
-		local songName = (message:sub(7) or ""):match("^%s*(.-)%s*$") or ""
+		
+		local songName = message:gsub("^!재생", ""):match("^%s*(.-)%s*$") or ""
+		
 		if songName ~= "" then
-			pcall(function() safeSendChat("Finding " .. songName .. "... Please wait.") end)
+			pcall(function() safeSendChat("🔍 '" .. songName .. "' 검색 중... 잠시만 기다려주세요.") end)
 			searchAndPlaySong(songName)
 		else
-			setStatus("✗ Usage: !play [song name]", Color3.fromRGB(200, 100, 100))
-			pcall(function() safeSendChat("Usage: !play [song name]") end)
+			setStatus("✗ 사용법: !재생 [노래 제목]", Color3.fromRGB(200, 100, 100))
+			pcall(function() safeSendChat("💡 사용법: !재생 [노래 제목]") end)
 		end
-	elseif lower == "!stop" then
+
+	elseif message == "!정지" then
 		if not isPlayerWhitelisted(speakerName) then
 			notWhitelisted()
 			return
 		end
 		stopSong()
-		pcall(function() safeSendChat("⏹ Playback stopped.") end)
-	elseif lower == "!pause" then
+		pcall(function() safeSendChat("⏹ 재생이 정지되었습니다.") end)
+
+	elseif message == "!일시정지" then
 		if not isPlayerWhitelisted(speakerName) then
 			notWhitelisted()
 			return
 		end
 		pauseSong()
-		pcall(function() safeSendChat("⏸ Playback paused.") end)
-	elseif lower == "!resume" then
+		pcall(function() safeSendChat("⏸ 재생을 일시 정지했습니다.") end)
+
+	elseif message == "!다시재생" or message == "!재개" then
 		if not isPlayerWhitelisted(speakerName) then
 			notWhitelisted()
 			return
 		end
 		if not isPaused then
-			setStatus("✗ No song is paused", Color3.fromRGB(200, 100, 100))
-			pcall(function() safeSendChat("No song is paused.") end)
+			setStatus("✗ 일시 정지된 노래가 없습니다", Color3.fromRGB(200, 100, 100))
+			pcall(function() safeSendChat("⚠️ 일시 정지된 노래가 없습니다.") end)
 			return
 		end
 		playSong()
-		pcall(function() safeSendChat("▶ Resumed playback.") end)
-	elseif lower == "!skip" then
+		pcall(function() safeSendChat("▶ 재생을 다시 시작합니다.") end)
+
+	elseif message == "!스킵" or message == "!건너뛰기" then
 		if not isPlayerWhitelisted(speakerName) then
 			notWhitelisted()
 			return
 		end
 		skipSong()
-		pcall(function() safeSendChat("⏭ Skipped to next song.") end)
+		pcall(function() safeSendChat("⏭ 다음 곡으로 스킵합니다.") end)
 	end
 end
 
+-- 채팅 이벤트 연결
 for _, plr in ipairs(Players:GetPlayers()) do
 	pcall(function()
 		plr.Chatted:Connect(function(msg) handleChatCommand(plr.Name, msg) end)
@@ -923,8 +918,8 @@ pcall(function()
 end)
 
 if isPythonServerRunning() then
-	setStatus("✓ Ready!", Color3.fromRGB(100, 200, 100))
+	setStatus("✓ 준비 완료!", Color3.fromRGB(100, 200, 100))
 	pythonRunning = true
 else
-	setStatus("✗ Python server not running (Start: python spotify_server.py)", Color3.fromRGB(200, 100, 100))
+	setStatus("✗ Python 서버가 실행되지 않음 (Start: python spotify_server.py)", Color3.fromRGB(200, 100, 100))
 end
