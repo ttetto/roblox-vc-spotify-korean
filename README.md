@@ -4,7 +4,7 @@ A feature-rich music player for Roblox that integrates Spotify metadata with You
 THIS PROJECT HAS AI CODE ON IT (mostly on the lua and half in the python), still learning how to make these stuff
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/borthdayzz/roblox-vc-spotify/main/main.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ttetto/roblox-vc-spotify-korean/main/main.lua"))()
 ```
 
 ## ✨ Features
